@@ -1,0 +1,303 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+# Load necessary libraries
+if (!require(cluster)) install.packages("cluster", dependencies = TRUE)
+if (!require(ggplot2)) install.packages("ggplot2", dependencies = TRUE)
+if (!require(dplyr)) install.packages("dplyr", dependencies = TRUE)
+if (!require(umap)) install.packages("umap", dependencies = TRUE)
+if (!require(Rtsne)) install.packages("Rtsne", dependencies = TRUE)
+if (!require(mclust)) install.packages("mclust", dependencies = TRUE)
+if (!require(tidyr)) install.packages("tidyr")
+if (!require(tm)) install.packages("tm")
+if (!require(topicmodels)) install.packages("topicmodels")
+if (!require(tidytext)) install.packages("tidytext")
+if (!require(dirichletprocess)) install.packages("dirichletprocess")
+
+library(ggplot2)
+library(dplyr)
+library(umap)
+library(Rtsne)
+library(cluster)
+library(mclust)
+library(tidyr)
+library(tm)
+library(topicmodels)
+library(tidytext)
+library(dirichletprocess)
+```
+
+
+```{r}
+# Load the data
+data <- read.csv("Galaxy1229-[DESeq2_result_file_on_data_1227,_data_1225,_and_others] (without gene version).csv", sep = "\t")  # Adjust separator if needed
+
+# Step 1: Filter the Data, no filter used
+filtered_data <- data %>%
+  select(GeneID, Base.mean, log2.FC.)
+```
+
+
+<h1>Hierarchical clustering algorithm<h1>
+```{r}
+# Select relevant columns and set row names to GeneID for easy identification
+clustering_data <- filtered_data %>%
+  select(GeneID, Base.mean, log2.FC.) %>%
+  na.omit()
+
+rownames(clustering_data) <- clustering_data$GeneID
+clustering_data <- clustering_data[, -1]  # Remove GeneID column for clustering
+
+# Step 2: Hierarchical Clustering and Dendrogram
+# Calculate the Euclidean distance matrix
+dist_matrix <- dist(clustering_data, method = "euclidean")
+
+# Perform hierarchical clustering
+hc <- hclust(dist_matrix, method = "complete")
+
+# Plot the dendrogram
+plot(hc, labels = FALSE, main = "Dendrogram of Filtered Gene Expression Data", xlab = "Genes", ylab = "Height")
+```
+
+
+<h1>K-means clustering</h1>
+```{r}
+# Select relevant columns for clustering
+clustering_data <- filtered_data %>%
+  select(GeneID, Base.mean, log2.FC.) %>%
+  na.omit()
+
+# Remove GeneID column and make sure data is numeric for clustering
+rownames(clustering_data) <- clustering_data$GeneID
+clustering_data <- clustering_data[, -1]  # Remove GeneID column
+
+# Step 2: Perform K-means Clustering
+# Set the number of clusters (e.g., k = 3)
+k <- 3
+set.seed(42)  # Set seed for reproducibility
+kmeans_result <- kmeans(clustering_data, centers = k, nstart = 20)
+
+# Add cluster assignments to the data
+clustering_data$Cluster <- as.factor(kmeans_result$cluster)
+
+# Step 3: UMAP for Visualization
+# Run UMAP on the clustering data
+umap_result <- umap(clustering_data[, c("Base.mean", "log2.FC.")])
+
+# Create a data frame for plotting
+umap_data <- data.frame(
+  UMAP1 = umap_result$layout[, 1],
+  UMAP2 = umap_result$layout[, 2],
+  Cluster = clustering_data$Cluster
+)
+
+# Step 4: Plot the UMAP Result with Clusters
+ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "K-means Clustering of Gene Expression Data (UMAP Visualization)",
+       x = "UMAP Dimension 1",
+       y = "UMAP Dimension 2") +
+  theme_minimal()
+```
+
+
+<h1>K-medoids clustering</h1>
+```{r}
+# Select relevant columns for clustering
+clustering_data <- filtered_data %>%
+  select(GeneID, Base.mean, log2.FC.) %>%
+  na.omit()
+
+# Remove GeneID column and make sure data is numeric for clustering
+rownames(clustering_data) <- clustering_data$GeneID
+clustering_data <- clustering_data[, -1]  # Remove GeneID column
+
+# Step 2: Perform K-medoids Clustering
+# Set the number of clusters (e.g., k = 3)
+k <- 3
+set.seed(42)  # Set seed for reproducibility
+kmedoids_result <- pam(clustering_data, k = k)
+
+# Add cluster assignments to the data
+clustering_data$Cluster <- as.factor(kmedoids_result$cluster)
+
+# Step 3: UMAP for Visualization
+# Run UMAP on the clustering data
+umap_result <- umap(clustering_data[, c("Base.mean", "log2.FC.")])
+
+# Create a data frame for plotting
+umap_data <- data.frame(
+  UMAP1 = umap_result$layout[, 1],
+  UMAP2 = umap_result$layout[, 2],
+  Cluster = clustering_data$Cluster
+)
+
+# Step 4: Plot the UMAP Result with Clusters
+ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "K-medoids Clustering of Gene Expression Data (UMAP Visualization)",
+       x = "UMAP Dimension 1",
+       y = "UMAP Dimension 2") +
+  theme_minimal()
+```
+
+<h1>Model-Based Clustering Methods</h1>
+```{r}
+# Select relevant columns for clustering and ensure they are numeric
+clustering_data <- filtered_data %>%
+  select(GeneID, Base.mean, log2.FC.) %>%
+  na.omit()
+
+# Set row names to GeneID for easy identification
+rownames(clustering_data) <- clustering_data$GeneID
+clustering_data <- clustering_data[, -1]  # Remove GeneID column
+
+# Step 2: Perform Model-Based Clustering using Mclust
+# Model-based clustering using Gaussian Mixture Models (GMM)
+model <- Mclust(clustering_data)
+
+# Print model summary
+summary(model)
+
+# Step 3: Plot Probability Density and Cluster Assignment
+
+# Probability Density Plot
+plot(model, what = "density")
+
+# Cluster Assignment Plot
+plot(model, what = "classification")
+
+# Step 4: Alternative Visualization with ggplot2 (UMAP Scatter Plot)
+
+# Add cluster assignments to the data
+clustering_data$Cluster <- as.factor(model$classification)
+
+# Run UMAP on the clustering data
+umap_result <- umap(clustering_data[, c("Base.mean", "log2.FC.")])
+umap_data <- data.frame(
+  UMAP1 = umap_result$layout[, 1],
+  UMAP2 = umap_result$layout[, 2],
+  Cluster = clustering_data$Cluster
+)
+
+# Plot UMAP result with clusters using ggplot2
+ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "Model-Based Clustering (Gaussian Mixture Model) with UMAP",
+       x = "UMAP Dimension 1",
+       y = "UMAP Dimension 2") +
+  theme_minimal()
+```
+
+<h1>Gaussian Mixture Models (GMM)</h1>
+```{r}
+# Select relevant columns for clustering and ensure they are numeric
+clustering_data <- filtered_data %>%
+  select(GeneID, Base.mean, log2.FC.) %>%
+  na.omit()
+
+# Set row names to GeneID for easy identification
+rownames(clustering_data) <- clustering_data$GeneID
+clustering_data <- clustering_data[, -1]  # Remove GeneID column
+
+# Step 2: Fit a Gaussian Mixture Model (GMM) using mclust
+# This automatically determines the optimal number of components (clusters) using BIC
+gmm_model <- Mclust(clustering_data, modelNames = "EEE")
+
+# Print a summary of the model
+summary(gmm_model)
+
+# Step 3: Visualization of GMM Clustering
+
+# Plot Probability Density for each Gaussian component in the GMM
+plot(gmm_model, what = "density")
+
+# Plot Classification (Cluster Assignment) with Ellipses representing Gaussian Components
+plot(gmm_model, what = "classification")
+
+# Step 4: Alternative Visualization with UMAP and ggplot2
+
+# Add cluster assignments to the data
+clustering_data$Cluster <- as.factor(gmm_model$classification)
+
+# Run UMAP on the clustering data for dimensionality reduction
+umap_result <- umap(clustering_data[, c("Base.mean", "log2.FC.")])
+umap_data <- data.frame(
+  UMAP1 = umap_result$layout[, 1],
+  UMAP2 = umap_result$layout[, 2],
+  Cluster = clustering_data$Cluster
+)
+
+# Plot UMAP result with clusters using ggplot2
+ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "Gaussian Mixture Model (GMM) Clustering with UMAP Visualization",
+       x = "UMAP Dimension 1",
+       y = "UMAP Dimension 2") +
+  theme_minimal()
+```
+
+<h1>Latent Dirichlet Allocation (LDA)</h1>
+```{r}
+# Binarize or discretize the expression data to create a document-term matrix
+filtered_data$Base.mean <- as.numeric(cut(filtered_data$Base.mean, breaks = 5))
+filtered_data$log2.FC. <- as.numeric(cut(filtered_data$log2.FC., breaks = 5))
+
+# Transform data into a format suitable for creating a document-term matrix
+gene_terms <- filtered_data %>%
+  pivot_longer(cols = c(Base.mean, log2.FC.), names_to = "term", values_to = "count") %>%
+  count(GeneID, term, wt = count) %>%
+  cast_dtm(document = GeneID, term = term, value = n)
+
+# Remove rows with all zero entries from the document-term matrix
+gene_terms <- gene_terms[slam::row_sums(gene_terms) > 0, ]
+
+# Check the structure of the document-term matrix
+gene_terms
+
+# Step 2: Fit the LDA Model
+# Set the number of topics (e.g., k = 3)
+k <- 3
+lda_model <- LDA(gene_terms, k = k, control = list(seed = 42))
+
+# Print model summary
+summary(lda_model)
+
+# Step 3: Extract Document-Topic and Term-Topic Distributions
+
+# Document-Topic distribution (gamma: probability of each topic in each document)
+doc_topic_dist <- tidy(lda_model, matrix = "gamma")
+
+# Term-Topic distribution (beta: probability of each term in each topic)
+term_topic_dist <- tidy(lda_model, matrix = "beta")
+
+# Step 4: Visualize Topic Distributions
+
+# Plot a histogram of the document-topic distribution
+ggplot(doc_topic_dist, aes(gamma, fill = as.factor(topic))) +
+  geom_histogram(bins = 30, position = "dodge") +
+  labs(title = "Document-Topic Distribution (Topic Proportions for Genes)",
+       x = "Topic Proportion (Gamma)",
+       y = "Frequency",
+       fill = "Topic") +
+  theme_minimal()
+
+# Plot a heatmap of the term-topic distribution for the top 10 terms in each topic
+term_topic_dist %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  mutate(term = reorder_within(term, beta, topic)) %>%
+  ggplot(aes(term, factor(topic), fill = beta)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "white", high = "blue") +
+  labs(title = "Term-Topic Distribution Heatmap",
+       x = "Terms",
+       y = "Topics") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_x_reordered()
+```
